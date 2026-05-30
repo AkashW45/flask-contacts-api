@@ -1,7 +1,9 @@
 import logging
 import re
+import time
 import pytest
-from flask import Flask, g
+from datetime import datetime
+from flask import Flask, g, request
 from app.api import api as api_blueprint
 from app.models import User
 from unittest.mock import MagicMock, patch
@@ -12,6 +14,21 @@ def app():
     app = Flask(__name__)
     app.config['TESTING'] = True
     app.register_blueprint(api_blueprint)
+
+    # Request logging middleware (before/after request)
+    @app.before_request
+    def before_request_logging():
+        g.start_time = time.time()
+
+    @app.after_request
+    def after_request_logging(response):
+        if hasattr(g, 'start_time'):
+            elapsed = (time.time() - g.start_time) * 1000
+            logger = logging.getLogger('app.api.authentication')
+            timestamp = datetime.utcnow().isoformat()
+            logger.info(f'{timestamp} {request.method} {request.path} {response.status_code} {elapsed:.2f}ms')
+        return response
+
     return app
 
 
