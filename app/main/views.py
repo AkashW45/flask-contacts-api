@@ -1,5 +1,5 @@
 from flask import render_template, redirect, url_for, abort, flash, request,\
-    current_app, make_response
+    current_app, make_response, g
 from flask_login import login_required, current_user
 from flask_sqlalchemy import get_debug_queries
 from . import main
@@ -8,10 +8,27 @@ from .forms import EditProfileForm, EditProfileAdminForm, PostForm,\
 from .. import db
 from ..models import Permission, Role, User, Post, Comment
 from ..decorators import admin_required, permission_required
+import time
+from datetime import datetime
 
+
+@main.before_app_request
+def before_request():
+    g.start_time = time.time()
 
 @main.after_app_request
 def after_request(response):
+    # Log request info
+    elapsed = time.time() - g.start_time
+    current_app.logger.info(
+        '[%s] %s %s -> %d [%.0fms]',
+        datetime.utcnow().isoformat(),
+        request.method,
+        request.path,
+        response.status_code,
+        elapsed * 1000
+    )
+    # Slow query logging (existing)
     for query in get_debug_queries():
         if query.duration >= current_app.config['FLASKY_SLOW_DB_QUERY_TIME']:
             current_app.logger.warning(
