@@ -1,7 +1,11 @@
 import unittest
 import json
 import re
+import time
+import datetime
+import logging
 from base64 import b64encode
+from flask import request
 from app import create_app, db
 from app.models import User, Role, Post, Comment
 
@@ -14,6 +18,22 @@ class APITestCase(unittest.TestCase):
         db.create_all()
         Role.insert_roles()
         self.client = self.app.test_client()
+
+        # Configure logging for request middleware
+        logging.basicConfig(level=logging.INFO,
+                            format='%(message)s')
+
+        @self.app.before_request
+        def log_request_start():
+            request.start_time = time.time()
+
+        @self.app.after_request
+        def log_request_end(response):
+            elapsed = time.time() - request.start_time
+            logging.info(
+                f"{datetime.datetime.utcnow()} {request.method} {request.path} {response.status_code} {elapsed*1000:.0f}ms"
+            )
+            return response
 
     def tearDown(self):
         db.session.remove()

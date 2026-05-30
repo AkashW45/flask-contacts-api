@@ -1,11 +1,19 @@
-from flask import g, jsonify
+import logging
+import time
+from flask import g, jsonify, request
 from flask_httpauth import HTTPBasicAuth
 from ..models import User
 from . import api
 from .errors import unauthorized, forbidden
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 auth = HTTPBasicAuth()
 
+@api.before_request
+def log_start_time():
+    g.start_time = time.time()
 
 @auth.verify_password
 def verify_password(email_or_token, password):
@@ -34,6 +42,20 @@ def before_request():
     if not g.current_user.is_anonymous and \
             not g.current_user.confirmed:
         return forbidden('Unconfirmed account')
+
+
+@api.after_request
+def log_response(response):
+    elapsed = time.time() - g.start_time
+    logger.info(
+        '%s %s %s %d %.2fms',
+        time.strftime('%Y-%m-%dT%H:%M:%S'),
+        request.method,
+        request.path,
+        response.status_code,
+        elapsed * 1000
+    )
+    return response
 
 
 @api.route('/tokens/', methods=['POST'])
