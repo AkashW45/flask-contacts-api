@@ -62,11 +62,12 @@ def test_slow_query_logs_warning(client, app, log_stream, monkeypatch):
     assert 'SELECT * FROM slow' in log_output
 
 
-def test_log_includes_response_time(client, log_stream):
+def test_log_includes_response_time(client, log_stream, monkeypatch):
+    times = iter([100.0, 100.250])  # 250 ms elapsed
+    monkeypatch.setattr('app.main.views.time.time', lambda: next(times))
     client.get('/')
     log_output = log_stream.getvalue()
-    import re
-    assert re.search(r'\[\d+ms\]', log_output), "Response time log should contain a duration in ms"
+    assert '[250ms]' in log_output
 
 
 def test_after_request_returns_response(client):
