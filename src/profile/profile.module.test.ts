@@ -53,11 +53,11 @@ describe('LoggerMiddleware', () => {
     expect(logSpy).not.toHaveBeenCalled();
     expect(nextFunction).toHaveBeenCalled();
   });
-});
 
-describe('ProfileModule', () => {
-  let module: ProfileModule;
-  let mockConsumer: jest.Mocked<MiddlewareConsumer>;
+  it('should call next()', () => {
+    middleware.use(request as Request, response as Response, next);
+    expect(next).toHaveBeenCalled();
+  });
 
   beforeEach(() => {
     module = new ProfileModule();

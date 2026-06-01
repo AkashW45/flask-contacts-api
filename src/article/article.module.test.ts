@@ -100,7 +100,6 @@ describe('LoggerMiddleware', () => {
     }).not.toThrow();
     expect(next).toHaveBeenCalled();
   });
-});
 
 describe('ArticleModule', () => {
   it('should apply LoggerMiddleware to all routes before AuthMiddleware on specific routes', () => {
