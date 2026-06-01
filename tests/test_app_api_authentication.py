@@ -15,15 +15,15 @@ def app():
     app.config['TESTING'] = True
     app.register_blueprint(api_blueprint)
 
-    # Request logging middleware (before/after request)
+    # Request logging middleware (before/after request) using request.start_time as per ADR
     @app.before_request
     def before_request_logging():
-        g.start_time = time.time()
+        request.start_time = time.time()
 
     @app.after_request
     def after_request_logging(response):
-        if hasattr(g, 'start_time'):
-            elapsed = (time.time() - g.start_time) * 1000
+        if hasattr(request, 'start_time'):
+            elapsed = (time.time() - request.start_time) * 1000
             logger = logging.getLogger('app.api.authentication')
             timestamp = datetime.utcnow().isoformat()
             logger.info(f'{timestamp} {request.method} {request.path} {response.status_code} {elapsed:.2f}ms')

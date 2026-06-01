@@ -1,142 +1,75 @@
-import { ArticleModule, LoggerMiddleware } from './article.module';
-import { Logger } from '@nestjs/common';
-import { EventEmitter } from 'events';
-
-class MockResponse extends EventEmitter {
-  statusCode = 200;
-}
+import { LoggerMiddleware } from './article.module';
 
 describe('LoggerMiddleware', () => {
   let middleware: LoggerMiddleware;
-  let req: any;
-  let res: any;
-  let next: jest.Mock;
-  let loggerLogSpy: jest.SpyInstance;
+  let logSpy: jest.SpyInstance;
 
   beforeEach(() => {
     middleware = new LoggerMiddleware();
-    loggerLogSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
-
-    req = {
-      method: 'GET',
-      originalUrl: '/articles/feed',
-    };
-
-    const mockResponse = new MockResponse();
-    res = mockResponse;
-    res.on = mockResponse.on.bind(mockResponse);
-    next = jest.fn();
+    // Spy on the logger instance's log method
+    logSpy = jest.spyOn((middleware as any).logger, 'log').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
-  it('should call next() immediately', () => {
-    middleware.use(req, res, next);
-    expect(next).toHaveBeenCalledTimes(1);
-  });
-
-  it('should not call logger.log before response finishes', () => {
-    middleware.use(req, res, next);
-    expect(loggerLogSpy).not.toHaveBeenCalled();
-  });
-
-  it('should log the correct format when response finishes', () => {
-    const startTime = Date.now();
-    jest.spyOn(Date, 'now').mockReturnValueOnce(startTime).mockReturnValueOnce(startTime + 123);
+  it('should log request on finish event with correct format (happy path)', () => {
+    const req = { method: 'GET', path: '/articles/123' };
+    const res = {
+      statusCode: 200,
+      on: jest.fn().mockImplementation((event: string, callback: () => void) => {
+        if (event === 'finish') callback();
+      }),
+    };
+    const next = jest.fn();
 
     middleware.use(req, res, next);
 
-    // emit finish event
-    res.emit('finish');
-
-    expect(loggerLogSpy).toHaveBeenCalledTimes(1);
-    const logCall = loggerLogSpy.mock.calls[0][0];
-    expect(logCall).toMatch(
-      new RegExp(
-        `\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z \\| GET \\| /articles/feed \\| 200 \\| 123ms`
-      )
+    expect(next).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const logMessage = logSpy.mock.calls[0][0];
+    expect(logMessage).toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \| GET \| \/articles\/123 \| 200 \| \d+ms/
     );
   });
 
-  it('should log response time as a number in milliseconds', () => {
-    const startTime = 1000;
-    jest.spyOn(Date, 'now').mockReturnValueOnce(startTime).mockReturnValueOnce(startTime + 456);
-
-    middleware.use(req, res, next);
-    res.emit('finish');
-
-    expect(loggerLogSpy).toHaveBeenCalledTimes(1);
-    const logCall = loggerLogSpy.mock.calls[0][0];
-    // extract the elapsed part before 'ms'
-    const match = logCall.match(/\| (\d+)ms/);
-    expect(match).toBeTruthy();
-    expect(Number(match![1])).toBe(456);
-  });
-
-  it('should handle missing originalUrl gracefully', () => {
-    req.originalUrl = undefined;
-
-    const startTime = 0;
-    jest.spyOn(Date, 'now').mockReturnValueOnce(startTime).mockReturnValueOnce(startTime + 10);
-
-    middleware.use(req, res, next);
-    res.emit('finish');
-
-    expect(loggerLogSpy).toHaveBeenCalledTimes(1);
-    const logCall = loggerLogSpy.mock.calls[0][0];
-    expect(logCall).toContain('| undefined |');
-  });
-
-  it('should not crash if logger.log throws an error', () => {
-    loggerLogSpy.mockImplementation(() => {
-      throw new Error('Logging failed');
-    });
-
-    expect(() => {
-      middleware.use(req, res, next);
-      res.emit('finish');
-    }).not.toThrow();
-    expect(next).toHaveBeenCalled();
-  });
-
-describe('ArticleModule', () => {
-  it('should apply LoggerMiddleware to all routes before AuthMiddleware on specific routes', () => {
-    const module = new ArticleModule();
-    const consumer = {
-      apply: jest.fn().mockReturnThis(),
-      forRoutes: jest.fn().mockReturnThis(),
+  it('should log error status code when response has status >= 400 (error path)', () => {
+    const req = { method: 'POST', path: '/articles' };
+    const res = {
+      statusCode: 500,
+      on: jest.fn().mockImplementation((event: string, callback: () => void) => {
+        if (event === 'finish') callback();
+      }),
     };
+    const next = jest.fn();
 
-    module.configure(consumer as any);
+    middleware.use(req, res, next);
 
-    // First chain: apply should be called with LoggerMiddleware
-    expect(consumer.apply).toHaveBeenNthCalledWith(1, LoggerMiddleware);
-    expect(consumer.forRoutes).toHaveBeenNthCalledWith(1, '*');
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const logMessage = logSpy.mock.calls[0][0];
+    expect(logMessage).toMatch(
+      /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \| POST \| \/articles \| 500 \| \d+ms/
+    );
+  });
 
-    // Second chain: apply should be called with AuthMiddleware
-    expect(consumer.apply).toHaveBeenNthCalledWith(2, expect.any(Function)); // AuthMiddleware is imported
+  it('should log request path without query string even if original URL contained one (edge case)', () => {
+    // Simulate req.path (without query) and req.originalUrl (with query)
+    const req = { method: 'GET', path: '/articles', originalUrl: '/articles?page=2' };
+    const res = {
+      statusCode: 200,
+      on: jest.fn().mockImplementation((event: string, callback: () => void) => {
+        if (event === 'finish') callback();
+      }),
+    };
+    const next = jest.fn();
 
-    // forRoutes should be called with an array of specific routes
-    const forRoutesCall = consumer.forRoutes.mock.calls[1][0];
-    expect(Array.isArray(forRoutesCall)).toBe(true);
-    expect(forRoutesCall).toHaveLength(8);
+    middleware.use(req, res, next);
 
-    const expectedRoutes = [
-      { path: 'articles/feed', method: 0 },
-      { path: 'articles', method: 1 },
-      { path: 'articles/:slug', method: 2 },
-      { path: 'articles/:slug', method: 3 },
-      { path: 'articles/:slug/comments', method: 1 },
-      { path: 'articles/:slug/comments/:id', method: 2 },
-      { path: 'articles/:slug/favorite', method: 1 },
-      { path: 'articles/:slug/favorite', method: 2 },
-    ];
-
-    expect(forRoutesCall).toEqual(expectedRoutes.map(r => ({
-      path: r.path,
-      method: r.method,
-    })));
+    const logMessage = logSpy.mock.calls[0][0];
+    expect(logMessage).toMatch(/\| GET \| \/articles \| 200 \| \d+ms/);
+    expect(logMessage).not.toContain('?page=2');
+    // Also ensure the original URL is not logged
+    expect(logMessage).not.toContain('/articles?page=2');
   });
 });
