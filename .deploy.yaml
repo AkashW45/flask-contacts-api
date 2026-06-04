@@ -9,7 +9,7 @@ registry: ecr-prod
 deploy_target: ecs-prod-alb
 
 # Service identifier — also used as the ECR repo name and ECS service name
-service_name: request-logging-middleware
+service_name: app
 
 # Port the container listens on, and the path the health check probes.
 # Phase 7 uses these for the ECS target group. For a static (nginx) site these
