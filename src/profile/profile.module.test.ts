@@ -1,78 +1,66 @@
-import { LoggerMiddleware } from './profile.module';
-import { Logger } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+import { VersionController } from './profile.module';
 
-describe('LoggerMiddleware', () => {
-  let middleware: LoggerMiddleware;
-  let mockRequest: Partial<Request>;
-  let mockResponse: Partial<Response>;
-  let nextFunction: jest.Mock;
-  let loggerLogSpy: jest.SpyInstance;
+describe('ProfileModule VersionController', () => {
+  let app: INestApplication;
 
-  beforeEach(() => {
-    middleware = new LoggerMiddleware();
-    mockRequest = { method: 'GET', originalUrl: '/test' };
-    mockResponse = {
-      statusCode: 200,
-      on: jest.fn().mockImplementation((event: string, callback: () => void) => {
-        if (event === 'finish') {
-          (mockResponse as any)._finishCallback = callback;
-        }
-        return mockResponse as Response;
-      }),
-    };
-    nextFunction = jest.fn();
-    loggerLogSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      controllers: [VersionController],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
+  afterAll(async () => {
+    await app.close();
   });
 
-  it('should call next() to continue the request pipeline', () => {
-    middleware.use(mockRequest as Request, mockResponse as Response, nextFunction);
-    expect(nextFunction).toHaveBeenCalled();
+  it('should return 200 with service, commit, timestamp', async () => {
+    const res = await request(app.getHttpServer()).get('/version');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('service', 'profile-service');
+    expect(res.body).toHaveProperty('commit');
+    expect(res.body).toHaveProperty('timestamp');
+    expect(() => new Date(res.body.timestamp)).not.toThrow();
   });
 
-  it('should attach a listener to the response finish event', () => {
-    middleware.use(mockRequest as Request, mockResponse as Response, nextFunction);
-    expect(mockResponse.on).toHaveBeenCalledWith('finish', expect.any(Function));
+  it('should respond with Content-Type application/json', async () => {
+    const res = await request(app.getHttpServer()).get('/version');
+    expect(res.headers['content-type']).toMatch(/application\/json/);
   });
 
-  it('should log correct message with timestamp, method, path, status, and response time', () => {
-    jest.spyOn(global.Date, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1150);
-    jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2025-01-01T00:00:00.000Z');
-
-    middleware.use(mockRequest as Request, mockResponse as Response, nextFunction);
-    (mockResponse as any)._finishCallback();
-
-    expect(loggerLogSpy).toHaveBeenCalledWith(
-      '2025-01-01T00:00:00.000Z GET /test 200 150ms'
-    );
+  it('should return commit from GIT_COMMIT env if set', async () => {
+    const original = process.env.GIT_COMMIT;
+    process.env.GIT_COMMIT = 'abc123def456';
+    try {
+      const res = await request(app.getHttpServer()).get('/version');
+      expect(res.body.commit).toBe('abc123def456');
+    } finally {
+      process.env.GIT_COMMIT = original;
+    }
   });
 
-  it('should log correctly for a different HTTP method (POST)', () => {
-    mockRequest.method = 'POST';
-    mockRequest.originalUrl = '/api/data';
-    jest.spyOn(global.Date, 'now').mockReturnValueOnce(2000).mockReturnValueOnce(2100);
-    jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2025-02-02T12:00:00.000Z');
-
-    middleware.use(mockRequest as Request, mockResponse as Response, nextFunction);
-    (mockResponse as any)._finishCallback();
-
-    expect(loggerLogSpy).toHaveBeenCalledWith(
-      '2025-02-02T12:00:00.000Z POST /api/data 200 100ms'
-    );
+  it('should return commit "unknown" if GIT_COMMIT not set', async () => {
+    const original = process.env.GIT_COMMIT;
+    delete process.env.GIT_COMMIT;
+    try {
+      const res = await request(app.getHttpServer()).get('/version');
+      expect(res.body.commit).toBe('unknown');
+    } finally {
+      process.env.GIT_COMMIT = original;
+    }
   });
 
-  it('should handle missing request properties gracefully by logging undefined values', () => {
-    mockRequest.method = undefined;
-    jest.spyOn(global.Date, 'now').mockReturnValueOnce(500).mockReturnValueOnce(600);
-    jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2025-03-03T00:00:00.000Z');
-
-    middleware.use(mockRequest as Request, mockResponse as Response, nextFunction);
-    (mockResponse as any)._finishCallback();
-
-    expect(loggerLogSpy).toHaveBeenCalledWith(expect.stringContaining('undefined'));
+  it('should return a recent UTC ISO 8601 timestamp', async () => {
+    const res = await request(app.getHttpServer()).get('/version');
+    const now = Date.now();
+    const ts = new Date(res.body.timestamp);
+    expect(ts.toISOString()).toBe(res.body.timestamp);
+    expect(ts.getTime()).toBeLessThan(now + 2000);
+    expect(ts.getTime()).toBeGreaterThan(now - 5000);
   });
 });
