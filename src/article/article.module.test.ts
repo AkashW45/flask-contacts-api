@@ -1,41 +1,41 @@
-import { VersionController } from './article.module';
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+import { PingController } from './article.module';
 
-describe('VersionController', () => {
-  let controller: VersionController;
+describe('PingController', () => {
+  let app: INestApplication;
 
-  beforeEach(() => {
-    controller = new VersionController();
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [PingController],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
   });
 
-  afterEach(() => {
-    delete process.env.GIT_COMMIT;
+  afterAll(async () => {
+    await app.close();
   });
 
-  it('should return version info with commit from env', () => {
-    process.env.GIT_COMMIT = 'abc123';
-    const result = controller.getVersion();
-
-    expect(result).toEqual({
-      service: 'article-service',
-      commit: 'abc123',
-      timestamp: expect.any(String),
-    });
-    expect(Date.parse(result.timestamp)).not.toBeNaN();
-    const now = Date.now();
-    const parsed = new Date(result.timestamp).getTime();
-    expect(Math.abs(now - parsed)).toBeLessThan(5000);
+  it('GET /ping should return 200, text/plain content-type, and body pong', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/ping')
+      .expect(200);
+    expect(response.headers['content-type']).toMatch(/text\/plain/);
+    expect(response.text).toBe('pong');
   });
 
-  it('should fallback to "unknown" if GIT_COMMIT not set', () => {
-    delete process.env.GIT_COMMIT;
-    const result = controller.getVersion();
-    expect(result.commit).toBe('unknown');
-    expect(result.service).toBe('article-service');
-    expect(typeof result.timestamp).toBe('string');
+  it('POST /ping should return 404', async () => {
+    await request(app.getHttpServer())
+      .post('/ping')
+      .expect(404);
   });
 
-  it('should return a valid ISO 8601 timestamp ending with Z', () => {
-    const result = controller.getVersion();
-    expect(result.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  it('GET / should return 404', async () => {
+    await request(app.getHttpServer())
+      .get('/')
+      .expect(404);
   });
 });

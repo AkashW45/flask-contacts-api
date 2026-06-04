@@ -1,43 +1,65 @@
 package io.spring.api.exception;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Nested;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import java.time.Instant;
-import java.util.Map;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class ResourceNotFoundExceptionTests {
 
-    private final ResourceNotFoundException controller = new ResourceNotFoundException();
-
     @Test
-    void shouldReturn200OkWhenGetVersion() {
-        ResponseEntity<Map<String, String>> response = controller.getVersion();
-        assertEquals(HttpStatus.OK, response.getStatusCode());
+    void shouldBeAnnotatedWithNotFoundStatus() {
+        ResponseStatus annotation = ResourceNotFoundException.class.getAnnotation(ResponseStatus.class);
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.value()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void shouldReturnServiceNameFlaskContactsApi() {
-        ResponseEntity<Map<String, String>> response = controller.getVersion();
-        assertEquals("flask-contacts-api", response.getBody().get("service"));
+    void shouldExtendRuntimeException() {
+        assertThat(RuntimeException.class.isAssignableFrom(ResourceNotFoundException.class)).isTrue();
     }
 
-    @Test
-    void shouldReturnCommitUnknownWhenGitCommitEnvNotSet() {
-        // Assumes GIT_COMMIT environment variable is not set
-        ResponseEntity<Map<String, String>> response = controller.getVersion();
-        assertEquals("unknown", response.getBody().get("commit"));
-    }
+    @Nested
+    @WebMvcTest(PingController.class)
+    class PingControllerTest {
 
-    @Test
-    void shouldReturnTimestampInIso8601Format() {
-        ResponseEntity<Map<String, String>> response = controller.getVersion();
-        String timestamp = response.getBody().get("timestamp");
-        assertNotNull(timestamp);
-        assertDoesNotThrow(() -> Instant.parse(timestamp));
+        @Autowired
+        private MockMvc mockMvc;
+
+        @Test
+        void pingEndpoint_shouldReturnPongWith200AndPlainText() throws Exception {
+            mockMvc.perform(get("/ping"))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string("pong"))
+                    .andExpect(header().string("Content-Type", "text/plain;charset=UTF-8"));
+        }
+
+        @Test
+        void pingEndpoint_withJsonAcceptHeader_shouldStillReturnPlainText() throws Exception {
+            mockMvc.perform(get("/ping").accept("application/json"))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string("pong"))
+                    .andExpect(header().string("Content-Type", "text/plain;charset=UTF-8"));
+        }
+
+        @Test
+        void getRootPath_shouldReturn404NotFound() throws Exception {
+            mockMvc.perform(get("/"))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        void postPingEndpoint_shouldReturn405MethodNotAllowed() throws Exception {
+            mockMvc.perform(post("/ping"))
+                    .andExpect(status().isMethodNotAllowed());
+        }
     }
 }
