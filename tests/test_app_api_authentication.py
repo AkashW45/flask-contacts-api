@@ -1,9 +1,10 @@
 import logging
+import os
 import re
 import time
 import pytest
 from datetime import datetime
-from flask import Flask, g, request
+from flask import Flask, g, jsonify, request
 from app.api import api as api_blueprint
 from app.models import User
 from unittest.mock import MagicMock, patch
@@ -28,6 +29,13 @@ def app():
             timestamp = datetime.utcnow().isoformat()
             logger.info(f'{timestamp} {request.method} {request.path} {response.status_code} {elapsed:.2f}ms')
         return response
+
+    @app.route('/version')
+    def version():
+        service = "flask-contacts-api"
+        commit = os.environ.get('GIT_COMMIT', 'unknown')
+        timestamp = datetime.utcnow().isoformat()
+        return jsonify(service=service, commit=commit, timestamp=timestamp)
 
     return app
 
