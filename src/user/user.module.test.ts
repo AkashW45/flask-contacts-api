@@ -3,45 +3,38 @@ import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { PingController } from './user.module';
 
-describe('PingController', () => {
-  describe('unit', () => {
-    it('should return "pong"', () => {
-      const controller = new PingController();
-      expect(controller.getPing()).toBe('pong');
-    });
+describe('PingController (e2e)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      controllers: [PingController],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
   });
 
-  describe('integration', () => {
-    let app: INestApplication;
+  afterAll(async () => {
+    await app.close();
+  });
 
-    beforeAll(async () => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        controllers: [PingController],
-      }).compile();
-
-      app = moduleFixture.createNestApplication();
-      await app.init();
-    });
-
-    afterAll(async () => {
-      await app.close();
-    });
-
-    it('GET /ping returns 200 and "pong" with text/plain', async () => {
+  describe('GET /ping', () => {
+    it('should return "pong" with HTTP 200 and Content-Type text/plain', async () => {
       const response = await request(app.getHttpServer())
         .get('/ping')
-        .expect(200);
+        .expect(200)
+        .expect('Content-Type', 'text/plain');
       expect(response.text).toBe('pong');
-      expect(response.headers['content-type']).toMatch(/text\/plain/);
     });
 
-    it('POST /ping returns 404', async () => {
+    it('should return 404 for POST /ping (method not allowed)', async () => {
       await request(app.getHttpServer())
         .post('/ping')
         .expect(404);
     });
 
-    it('GET /ping/ (trailing slash) returns 404', async () => {
+    it('should return 404 for GET /ping/ (trailing slash)', async () => {
       await request(app.getHttpServer())
         .get('/ping/')
         .expect(404);
