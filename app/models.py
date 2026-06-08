@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from markdown import markdown
 import bleach
-from flask import current_app, request, url_for
+from flask import Blueprint, current_app, request, url_for
 from flask_login import UserMixin, AnonymousUserMixin
 from app.exceptions import ValidationError
 from . import db, login_manager
@@ -365,3 +365,11 @@ class Comment(db.Model):
 
 
 db.event.listen(Comment.body, 'set', Comment.on_changed_body)
+
+
+# Ping route (register this blueprint in your app factory)
+ping_bp = Blueprint('ping', __name__)
+
+@ping_bp.route('/ping')
+def ping():
+    return 'pong', 200, {'Content-Type': 'text/plain'}
