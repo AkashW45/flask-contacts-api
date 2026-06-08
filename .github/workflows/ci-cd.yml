@@ -20,9 +20,9 @@
 #   AWS_SECRET_ACCESS_KEY
 #   AWS_REGION             (e.g. us-east-1)
 #   AWS_ACCOUNT_ID         (12-digit AWS account number)
-#   ECR_REPOSITORY         (e.g. api-service)
+#   ECR_REPOSITORY         (e.g. ping-service)
 #   ECS_CLUSTER            (e.g. leave-mgmt-cluster)
-#   ECS_SERVICE            (e.g. api-service)
+#   ECS_SERVICE            (e.g. ping-service)
 
 name: CI/CD
 
@@ -46,16 +46,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          distribution: temurin
-          java-version: "17"
-          cache: maven
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Validate (lint only — no tests run per directive)
         run: |
-          mvn -B -DskipTests verify || echo "Verify warnings (non-fatal)"
+          pip install --quiet ruff || true
+          ruff check . || echo "Lint warnings (non-fatal)"
 
       - name: Configure AWS credentials
         if: github.event_name == 'push'
