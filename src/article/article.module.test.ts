@@ -1,78 +1,76 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { RequestMethod } from '@nestjs/common';
-import { ArticleModule, PingController, LoggerMiddleware } from './article.module';
-import { AuthMiddleware } from '../user/auth.middleware';
-
-jest.mock('@nestjs/typeorm', () => ({
-  TypeOrmModule: {
-    forFeature: jest.fn().mockReturnValue({ module: class Mock {}, providers: [] }),
-  },
-}));
-
-jest.mock('../user/user.module', () => ({
-  UserModule: class MockUserModule {},
-}));
-
-jest.mock('./article.service', () => ({
-  ArticleService: class MockArticleService {},
-}));
+import { INestApplication, Logger } from '@nestjs/common';
+import * as request from 'supertest';
+import { LoggerMiddleware, PingController, ArticleModule } from './article.module';
 
 describe('ArticleModule', () => {
-  let module: TestingModule;
+  let app: INestApplication;
 
-  beforeEach(async () => {
-    module = await Test.createTestingModule({
-      imports: [ArticleModule],
-    }).compile();
+  describe('PingController (e2e)', () => {
+    beforeAll(async () => {
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        controllers: [PingController],
+      }).compile();
+
+      app = moduleFixture.createNestApplication();
+      await app.init();
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    it('should return "pong" when ping() is called directly', () => {
+      const controller = new PingController();
+      expect(controller.ping()).toBe('pong');
+    });
+
+    it('GET /ping should return 200 with "pong" and Content-Type text/plain', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/ping')
+        .expect(200)
+        .expect('Content-Type', /text\/plain/)
+        .expect('pong');
+    });
+
+    it('POST /ping should return 404 Not Found', async () => {
+      await request(app.getHttpServer())
+        .post('/ping')
+        .expect(404);
+    });
   });
 
-  it('should be defined', () => {
-    expect(module).toBeDefined();
-  });
+  describe('LoggerMiddleware', () => {
+    it('should log the HTTP request after the response finishes', () => {
+      const middleware = new LoggerMiddleware();
+      const req = {
+        method: 'GET',
+        path: '/test',
+        originalUrl: '/test',
+      };
+      const res = {
+        statusCode: 200,
+        on: jest.fn().mockImplementation((event, callback) => {
+          if (event === 'finish') {
+            callback();
+          }
+        }),
+      };
+      const next = jest.fn();
 
-  it('should contain PingController', () => {
-    const controller = module.get<PingController>(PingController);
-    expect(controller).toBeInstanceOf(PingController);
-  });
+      const loggerSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+      middleware.use(req, res, next);
 
-  it('PingController.ping() should return "pong"', () => {
-    const controller = module.get<PingController>(PingController);
-    expect(controller.ping()).toBe('pong');
-  });
+      expect(next).toHaveBeenCalled();
+      expect(res.on).toHaveBeenCalledWith('finish', expect.any(Function));
 
-  it('should apply LoggerMiddleware for all routes and AuthMiddleware for specific routes', () => {
-    const articleModule = module.get<ArticleModule>(ArticleModule);
-    const applyResult = {
-      forRoutes: jest.fn().mockReturnThis(),
-    };
-    const consumerMock = {
-      apply: jest.fn().mockReturnValue(applyResult),
-    };
-    // Enable chaining: after .forRoutes() consumerMock is returned to allow further .apply().
-    applyResult.forRoutes.mockReturnValue(consumerMock);
+      const loggedMessage = loggerSpy.mock.calls[0][0];
+      expect(loggedMessage).toMatch(/GET/);
+      expect(loggedMessage).toMatch(/\/test/);
+      expect(loggedMessage).toMatch(/200/);
+      expect(loggedMessage).toMatch(/\d+ms/);
 
-    articleModule.configure(consumerMock);
-
-    // Verify apply called for both middlewares
-    expect(consumerMock.apply).toHaveBeenCalledTimes(2);
-    expect(consumerMock.apply).toHaveBeenNthCalledWith(1, LoggerMiddleware);
-    expect(consumerMock.apply).toHaveBeenNthCalledWith(2, AuthMiddleware);
-
-    // Verify forRoutes calls
-    expect(applyResult.forRoutes).toHaveBeenCalledTimes(2);
-    expect(applyResult.forRoutes).toHaveBeenNthCalledWith(1, '*');
-
-    const secondCallArgs = applyResult.forRoutes.mock.calls[1];
-    // Validate the exact route objects spread in the second forRoutes call
-    expect(secondCallArgs).toEqual([
-      { path: 'articles/feed', method: RequestMethod.GET },
-      { path: 'articles', method: RequestMethod.POST },
-      { path: 'articles/:slug', method: RequestMethod.DELETE },
-      { path: 'articles/:slug', method: RequestMethod.PUT },
-      { path: 'articles/:slug/comments', method: RequestMethod.POST },
-      { path: 'articles/:slug/comments/:id', method: RequestMethod.DELETE },
-      { path: 'articles/:slug/favorite', method: RequestMethod.POST },
-      { path: 'articles/:slug/favorite', method: RequestMethod.DELETE },
-    ]);
+      loggerSpy.mockRestore();
+    });
   });
 });

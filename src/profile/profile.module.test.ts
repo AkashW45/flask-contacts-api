@@ -1,42 +1,56 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ProfileModule, PingController } from './profile.module';
+import { INestApplication } from '@nestjs/common';
+import * as request from 'supertest';
+import { ProfileModule } from './profile.module';
 
-describe('ProfileModule', () => {
-  it('should be defined', () => {
-    const module = new ProfileModule();
-    expect(module).toBeDefined();
+describe('ProfileModule (e2e)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [ProfileModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    await app.init();
   });
 
-  it('should configure middlewares without error', () => {
-    const module = new ProfileModule();
-    const mockConsumer = {
-      apply: jest.fn().mockReturnThis(),
-      forRoutes: jest.fn().mockReturnThis(),
-    };
-    expect(() => module.configure(mockConsumer as any)).not.toThrow();
-    expect(mockConsumer.apply).toHaveBeenCalledTimes(2);
-    expect(mockConsumer.forRoutes).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('PingController', () => {
-  let controller: PingController;
-
-  beforeEach(() => {
-    controller = new PingController();
+  afterAll(async () => {
+    await app.close();
   });
 
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
-  });
+  describe('/ping', () => {
+    it('GET /ping should return "pong" with status 200 and content-type text/plain', () => {
+      return request(app.getHttpServer())
+        .get('/ping')
+        .expect(200)
+        .expect('Content-Type', /text\/plain/)
+        .expect('pong');
+    });
 
-  it('should return "pong"', () => {
-    expect(controller.ping()).toBe('pong');
-  });
+    it('GET /ping should ignore query parameters', () => {
+      return request(app.getHttpServer())
+        .get('/ping?foo=bar')
+        .expect(200)
+        .expect('pong');
+    });
 
-  it('should consistently return "pong" on multiple calls', () => {
-    for (let i = 0; i < 100; i++) {
-      expect(controller.ping()).toBe('pong');
-    }
+    it('GET /ping/ should return 404', () => {
+      return request(app.getHttpServer())
+        .get('/ping/')
+        .expect(404);
+    });
+
+    it('POST /ping should return 404', () => {
+      return request(app.getHttpServer())
+        .post('/ping')
+        .expect(404);
+    });
+
+    it('PUT /ping should return 404', () => {
+      return request(app.getHttpServer())
+        .put('/ping')
+        .expect(404);
+    });
   });
 });

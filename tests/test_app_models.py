@@ -1,31 +1,37 @@
 import pytest
-from flask import Flask
-from app.models import ping_bp
+from app import app
 
 @pytest.fixture
-def app():
-    app = Flask(__name__)
-    app.register_blueprint(ping_bp)
-    return app
+def client():
+    with app.test_client() as client:
+        yield client
 
-@pytest.fixture
-def client(app):
-    return app.test_client()
-
-def test_ping_returns_200_and_pong(client):
-    response = client.get('/ping')
-    assert response.status_code == 200
-    assert response.data == b'pong'
-
-def test_ping_content_type_text_plain(client):
-    response = client.get('/ping')
-    assert response.content_type == 'text/plain'
+def test_ping_get_returns_pong(client):
+    """Happy path: GET /ping returns 200, plain text 'pong', and text/plain content type."""
+    resp = client.get('/ping')
+    assert resp.status_code == 200
+    assert resp.data.decode('utf-8') == 'pong'
+    assert resp.content_type == 'text/plain'
 
 def test_ping_post_method_not_allowed(client):
-    response = client.post('/ping')
-    assert response.status_code == 405
+    """Error path: POST /ping should return 405 Method Not Allowed."""
+    resp = client.post('/ping')
+    assert resp.status_code == 405
 
-def test_ping_blueprint_exists():
-    assert ping_bp.name == 'ping'
-    assert 'ping' in ping_bp.view_functions
-    assert ping_bp.view_functions['ping'].__name__ == 'ping'
+def test_ping_put_method_not_allowed(client):
+    """Error path: PUT /ping should return 405 Method Not Allowed."""
+    resp = client.put('/ping')
+    assert resp.status_code == 405
+
+def test_ping_head_returns_headers_no_body(client):
+    """Edge case: HEAD /ping returns 200 with Content-Type header and empty body."""
+    resp = client.head('/ping')
+    assert resp.status_code == 200
+    assert resp.data == b''
+    assert resp.content_type == 'text/plain'
+
+def test_ping_options_returns_allow_header(client):
+    """Edge case: OPTIONS /ping returns 200 and includes Allow header."""
+    resp = client.options('/ping')
+    assert resp.status_code == 200
+    assert 'Allow' in resp.headers
