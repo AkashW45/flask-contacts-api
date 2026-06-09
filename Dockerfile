@@ -14,8 +14,10 @@ RUN venv/bin/pip install -r requirements/docker.txt
 
 COPY app app
 COPY migrations migrations
+USER root
 COPY flasky.py config.py boot.sh ./
+RUN sed -i 's/\r$//' boot.sh && chmod +x boot.sh
+USER flasky
 
-# run-time configuration
 EXPOSE 5000
 ENTRYPOINT ["./boot.sh"]
