@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from flask import jsonify
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 if os.path.exists(dotenv_path):
@@ -84,4 +85,4 @@ def deploy():
 
 @app.route('/health')
 def health():
-    return {'status': 'ok'}, 200
+    return jsonify(status='ok'), 200
