@@ -7,7 +7,7 @@ import bleach
 from flask import current_app, request, url_for, Response
 from flask_login import UserMixin, AnonymousUserMixin
 from app.exceptions import ValidationError
-from . import db, login_manager, app
+from . import db, login_manager
 
 
 class Permission:
@@ -367,6 +367,3 @@ class Comment(db.Model):
 db.event.listen(Comment.body, 'set', Comment.on_changed_body)
 
 
-@app.route('/ping')
-def ping():
-    return Response('pong', mimetype='text/plain')
